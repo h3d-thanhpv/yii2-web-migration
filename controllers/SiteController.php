@@ -3,11 +3,14 @@
 namespace app\controllers;
 
 use Yii;
+use yii\console\Application;
 use yii\filters\AccessControl;
+use yii\web\BadRequestHttpException;
 use yii\web\Controller;
 use yii\filters\VerbFilter;
 use app\models\LoginForm;
 use app\models\ContactForm;
+use yii\web\HttpException;
 
 class SiteController extends Controller
 {
@@ -90,5 +93,45 @@ class SiteController extends Controller
     public function actionAbout()
     {
         return $this->render('about');
+    }
+
+    /**
+     * Run action migrate up or down in web interface.
+     * @return mixed
+     * @throws HttpException
+     */
+    public function actionMigrate()
+    {
+        $action = Yii::$app->request->get('action');
+        if(is_null($action)) {
+            throw new BadRequestHttpException("Action parameter required");
+        } else if($action !== 'up' && $action !== 'down') {
+            throw new HttpException("Action not found");
+        }
+
+        $oldApp = Yii::$app;
+        new Application([
+            'id'            => 'yii-web-console',
+            'basePath'      => '@app',
+            'bootstrap' => ['log'],
+            'components'    => [
+                'db' => $oldApp->db,
+                'cache' => [
+                    'class' => 'yii\caching\FileCache',
+                ],
+                'log' => [
+                    'targets' => [
+                        [
+                            'class' => 'yii\log\FileTarget',
+                            'levels' => ['error', 'warning'],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+        Yii::setAlias('@migrations', '@app/migrations/');
+        $migrateAction = 'migrate/' . $action;
+        Yii::$app->runAction($migrateAction, ['migrationPath' => '@migrations', 'interactive' => false]);
+        Yii::$app = $oldApp;
     }
 }
